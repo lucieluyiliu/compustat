@@ -50,13 +50,13 @@ endrsubmit;
 rsubmit;
 proc sql;
 create table compustat_selected as 
-select a.gvkey,a.iid,d.sic,d.fic,d.loc,a.sedol,a.isin,a.dsci,
+select a.gvkey,a.iid,d.sic,d.fic,d.loc,a.sedol,a.isin,a.dsci,conm, a.excntry,
 case when  a.dsci contains b.keyword then 1 else 0 end as namefilter
 from (select *  
 from compd.g_security a1 union select * from compd.security a2) a, 
 namefilter b,
 exchangemap c,
-(select d1.gvkey,d1.sic,d1.loc,d1.fic from compd.company d1 union select d2.gvkey,d2.sic,d2.loc,d2.fic from compd.g_company d2) d
+(select d1.gvkey,d1.sic,d1.loc,d1.fic,conm from compd.company d1 union select d2.gvkey,d2.sic,d2.loc,d2.fic,d2.conm from compd.g_company d2) d
 where  a.exchg=c.exchgcd 
 and c.ismajor =1
 and tpci='0'
@@ -64,18 +64,23 @@ and a.gvkey=d.gvkey
 and (input(sic,16.) >6999 or input(sic,16.) <6000);  /*exclude financial*/
 quit;
 endrsubmit;
+
 rsubmit;
 proc sql;
 create table tmp as select 
-gvkey,iid,sic,fi c,loc,sedol,isin,dsci,
+gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
 sum(namefilter) as namesum
-from compustat_selected 
-group by gvkey,iid
-where calculated namesum ne 1;
+from compustat_selected
+group by gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry
+having calculated namesum =0;
 quit;
+endrsubmit;
+rsubmit;
 proc sql;
 create table compustat_selected as 
-select gvkey,iid,sic,fic,loc,sedol,isin,dsci
+select gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
+case when loc=excntry then 1 else 0 as islocal
+
 from tmp;
 proc sort data=compustat_selected nodupkeys; by gvkey iid; run;
 
@@ -85,6 +90,8 @@ proc contents data=compg.compustat_selected;run;
 RSUBMIT;
 proc contents data=compustat_selected;run;
 ENDRSUBMIT;
+
+
 rsubmit;
 proc sql;
 create table majorexchange as 
@@ -120,8 +127,9 @@ create table totalreturnd as
 select a.gvkey,
 a.iid,
 a.datadate,
+a.curcdd,
 a.prccd/a.ajexdi*trfd/b.exratd*c.exratd as riusd,
-a.prccd*d.cshoi/a.ajexdi/b.exratd*c.exratd as issuemvusd
+a.prccd*d.cshoi/b.exratd*c.exratd as issuemvusd
 from compd.secd a, compd.exrt_dly b, compd.exrt_dly c,cshoi d
 
 where prcstd in (3,10,4)
@@ -133,14 +141,14 @@ and a.datadate=d.datadate
 and a.gvkey=d.gvkey 
 and a.iid=d.iid
 
-
+/*market capitalization do not divide by ajexdi!*/
 union all
 select a1.gvkey,
 a1.iid,
 a1.datadate,
-
+a1.curcdd,
 a1.prccd/a1.ajexdi*a1.trfd/b1.exratd*c1.exratd/a1.qunit as riusd,
-a1.prccd*a1.cshoc/a1.ajexdi/b1.exratd*c1.exratd/a1.qunit as issuemvusd
+a1.prccd*a1.cshoc/b1.exratd*c1.exratd/a1.qunit as issuemvusd
 from compd.g_secd a1, compd.exrt_dly b1, compd.exrt_dly c1
 
 
@@ -169,6 +177,7 @@ union all
 select * from compd.g_sec_history;
 
 endrsubmit;
+
 rsubmit;
 proc sql;
 create table returnd_selected as
@@ -181,31 +190,67 @@ where a.gvkey=b.gvkey
 and a.iid=b.iid;
 endrsubmit;
 
+/*daily return*/
+rsubmit;
+proc sort data=returnd_selected;
+by gvkey iid datadate;
+run;
+
+data returnd_selected;
+set returnd_selected;
+by gvkey iid;
+rank+1;
+if first.gvkey or first.iid then rank=1;
+run;
+endrsubmit;
+rsubmit;
+proc sql;
+create table returnd as 
+(select b.gvkey,b.iid,riusd, issuemvusd,datadate from returnd_selected b left join security c 
+on(b.gvkey=c.gvkey and b.iid=c.iid and dlrsni in ('02','03') and b.datadate=c.dldtei)
+where c.gvkey is null)
+union 
+(select a.gvkey,a.iid,b.riusd*0.7 as riusd,a.issuemvusd,a.datadate 
+from returnd_selected  a, returnd_selected b, security c 
+where a.gvkey=b.gvkey
+and a.iid=b.iid
+and b.gvkey=c.gvkey
+and b.iid=c.iid
+and a.datadate=c.dldtei
+and c.dlrsni in ('02','03')
+and b.rank=a.rank-1);
+endrsubmit;
+
+
+/*only 133 adjustments made*/
 
 rsubmit;
-proc download data=returnd_selected out=compg.retururnd_selected;run;
+proc download data=returnd out=compg.returnd;run;
 endrsubmit;
 
 
 /*copute weekly return*/
 rsubmit;
 proc sql;
-create table totalreturnw as 
+create table compg.totalreturnw as 
 select riusd,issuemvusd,gvkey,iid,
-datadzte
-from returnd_selected
-where weekday(datadte)eq 4
-order by datadate;
-proc sql;
-create table weeklyreturn as 
-select 
-gvkey,
-iid,
-diff(log(riusd)) as returnusd,issuemvusd,
 datadate
-from totalreturnw
-group by 
-gvkey,iid;
+from compg.returnd
+where weekday(datadate)eq 4
+order by datadate;
+quit;
+proc contents data=compg.returnd_selected;run;
+proc sql;
+create table compg.weeklyreturn as 
+select 
+a.gvkey,
+a.iid,
+log(a.riusd)-log(b.riusd) as returnusd,a.issuemvusd,
+a.datadate
+from compg.totalreturnw a, compg.totalreturnw b
+where a.datadate=b.datadate+7
+and a.gvkey=b.gvkey
+and a.iid=b.iid;
 quit;
 endrsubmit;
 rsubmit;
@@ -292,15 +337,6 @@ totalreturnd a, list b
 where a.gvkey=b.gvkey and a.iid=b.iid;
 endrsubmit;
 
-rsubmit;
-
-proc sql;
-create table list as select a.gvkey, a.iid  from 
-totalreturnd a, compustat_selected s 
-where  s.loc eq 'CYP'
-and a.gvkey=b.gvkey;
-and a.iid=s.iid;
-endrsubmit;
 
 
 rsubmit;
@@ -347,6 +383,10 @@ endrsubmit;
 
 rsubmit;
 proc download data=idhist out=compg.idhist;run;
+endrsubmit;
+
+rsubmit;
+proc download data=returnd_selected out=compg.returnd_selected;run;
 endrsubmit;
 
 proc sql;
