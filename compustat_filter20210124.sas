@@ -303,60 +303,12 @@ quit;
 endrsubmit;
 rsubmit;
 proc download data=return3d out=compg.return3d;run;
-proc sql;
-create table sedolhist as
-select 
-gvkey,iid,sedol,
-input(max(datadate),num8.) as thrudate,
-input(min(datadate),num8.) as effdate
-from compd.g_secd
-group by gvkey,iid,sedol;
-endrsubmit;
-proc sql;
-create table isinhist as
-select 
-gvkey,iid, isin,
-max(datadate) as thrudate,
-min(datadate) as effdate
-from compd.g_secd
-group by gvkey,iid,isin;
-quit;
-endrsubmit;
-rsubmit;
-proc sql;
-create table cusiphist as 
-select gvkey,iid,cusip,
-inpurt(max(datadate),num8.)as thrudate,
-min(datadate) as effdate
-from compd.secd
-group by gvkey,iid,cusip;
-endrsubmit;
 
 
 
-rsubmit;
-proc sql;
-alter table sedolhist 
-add  item char(80);
-update sedolhist
-set item='SEDOL';
-alter  table isinhist 
-add item char(80);
-update isinhist 
-set item='ISIN';
-alter table cusiphist 
-add item char(80);
-update cusiphist 
-set item='CUSIP';
-endrsubmit;
-rsubmit;
-proc sql;
-create table idhist as 
-select * from sec_history 
-union all select a.gvkey,a.iid, a.item,a.cusip as itemvalue,a.EFFDATE,a.THRUDATE from cusiphist a
-union all select b.gvkey,b.iid,b.item,b.sedol as itemvalue,b.effdate,b.thrudate from sedolhist b
-union all select c.gvkey,c.iid, c.item,c.isin as itemvalue,c.effdate,c.thrudate from isinhist c;
-endrsubmit;
+
+
+
 
 
 

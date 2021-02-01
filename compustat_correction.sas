@@ -9,7 +9,7 @@ and datadate <input('01/01/1992',mmddyy10.);
 quit;
 proc sql;
 update  compg.weeklyreturn
-set issuemvusd=issuemvusd/10
+set lagissuemvusd=lagissuemvusd/10
 where gvkey='205247'
 and iid='01W'
 and datadate <input('01/01/1992',mmddyy10.);
@@ -24,7 +24,7 @@ and datadate <input('10/01/1990',mmddyy10.);
 quit;
 proc sql;
 update compg.weeklyreturn
-set issuemvusd=.
+set lagissuemvusd=.
 where gvkey='029178'
 and iid='01W'
 and datadate <input('10/01/1990',mmddyy10.);
@@ -37,12 +37,17 @@ quit;
 /*brazil 1989 currency change*/
 proc sql;
 update compg.returnd a
-set riusd==riusd/1000
-compg.security b 
-where a.gvkey=b.vkey 
-and a.iid=b.iid 
-and b.excntry='BRA'
-and a.datadate=input('01/15/1989',mmddyy10.);
+set riusd=riusd/1000 
+where curcdd='BRE'
+and a.datadate=input('01/16/1989',mmddyy10.);
+quit;
+/*effective day is sunday, no data*/
+
+proc sql;
+update compg.weeklyreturn a
+set returnusd=(1+returnusd)/1000-1
+where curcdd='BRE'
+and a.datadate=input('01/18/1989',mmddyy10.);
 quit;
 /*chinese stocks 1993 abnormal*/
 
@@ -67,6 +72,7 @@ update compg.weeklyreturn
 set returnusd=.
 where gvkey='208200' and iid='01W' and datadate= input('03/24/1993',mmddyy10.);
 quit;
+/*not major excluded no correction*/
 proc sql;
 update compg.weeklyreturn
 set returnusd=.
@@ -95,7 +101,7 @@ quit;
 proc sql;
 update compg.weeklyreturn
 set returnusd=.
-where gvkey='210759' and iid='01W' and datadate= input('01/06/1999',mmddyy10.);
+where gvkey='2103255' and iid='01W' and datadate= input('01/06/1999',mmddyy10.);
 quit;
 proc sql;
 update compg.weeklyreturn
@@ -107,6 +113,8 @@ update compg.weeklyreturn
 set returnusd=.
 where gvkey='240641' and iid='01W' and datadate= input('01/06/1999',mmddyy10.);
 quit;
+
+
 proc sql;
 update compg.weeklyreturn
 set returnusd=.

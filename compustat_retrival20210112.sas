@@ -50,9 +50,9 @@ endrsubmit;
 rsubmit;
 proc sql;
 create table compustat_selected as 
-select a.gvkey,a.iid,d.sic,d.fic,d.loc, a.cusip, a.sedol,a.isin,a.dsci,conm, a.excntry,
+select a.gvkey,a.iid,d.sic,d.fic,d.loc,a.sedol,a.isin,a.dsci,conm, a.excntry,
 case when  a.dsci contains b.keyword then 1 else 0 end as namefilter
-from (select *,. as cusip   
+from (select *  
 from compd.g_security a1 union select * from compd.security a2) a, 
 namefilter b,
 exchangemap c,
@@ -63,46 +63,30 @@ and tpci in ('0','F')
 and a.gvkey=d.gvkey
 and (input(sic,16.) >6999 or input(sic,16.) <6000);  /*exclude financial*/
 quit;
-
-proc sql;
-create table sec_history as
-select * from compd.sec_history 
-union all
-select * from compd.g_sec_history;
-
 endrsubmit;
-
 
 rsubmit;
 proc sql;
 create table tmp as select 
-gvkey,iid,sic,fic,loc,cusip,sedol,isin,dsci,conm, excntry,
+gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
 sum(namefilter) as namesum
 from compustat_selected
-group by gvkey,iid,sic,fic,loc,cusip,sedol,isin,dsci,conm, excntry
+group by gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry
 having calculated namesum =0;
 quit;
 endrsubmit;
 rsubmit;
 proc sql;
 create table compustat_selected as 
-select gvkey,iid,sic,fic,loc,cusip, sedol,isin,dsci,conm, excntry,
+select gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
 case when loc=excntry then 1 else 0 end as islocal
 
-from tmp  a
-where exists (select 1 from sec_history b where 
-a.gvkey=b.gvkey and a.iid=b.iid and item in ('PRIHISTCAN','PRIHISTUSA','PRIHISTROW')
-and a.iid=b.itemvalue
-)
-;
-endrsubmit;
+from tmp;
 proc sort data=compustat_selected nodupkeys; by gvkey iid; run;
 
 endrsubmit;
-rsubmit;
-proc download data=compustat_Selected out=compg.compustat_selected;run;
-endrsubmit;
 
+proc contents data=compg.compustat_selected;run;
 RSUBMIT;
 proc contents data=compustat_selected;run;
 ENDRSUBMIT;
@@ -187,7 +171,14 @@ quit;
 
 endrsubmit;
 
+rsubmit;
+proc sql;
+create table sec_history as
+select * from compd.sec_history 
+union all
+select * from compd.g_sec_history;
 
+endrsubmit;
 
 rsubmit;
 proc sql;
@@ -196,11 +187,23 @@ select a.gvkey,a.iid,
 datadate, 
 curcdd,
 riusd,
-issuemvusd
-from totalreturnd a, compustat_selected b 
-where a.gvkey=b.gvkey
-and a.iid=b.iid;
+issuemvusd,
+case when idhist.itemvalue is not null then 1 else 0 end as ismajor
+from totalreturnd a inner join compustat_selected b 
+
+on( a.gvkey=b.gvkey
+and a.iid=b.iid)
+left join sec_history idhist on
+(
+idhist.item in ('PRIHISTCAN','PRIHISTUSA','PRIHISTROW')
+and a.datadate between idhist.effdate and case when idhist.thrudate is not null then idhist.thrudate else input('01/01/3000',mmddyy10.) end
+and b.gvkey=idhist.gvkey
+and b.iid=idhist.iid)
+where islocal=1
+and calculated ismajor=1;
 endrsubmit;
+
+
 
 /*daily return*/
 rsubmit;
@@ -234,18 +237,7 @@ and c.dlrsni in ('02','03')
 and b.rank=a.rank-1);
 endrsubmit;
 
-rsubmit;
-create table test as 
-select a.gvkey,a.iid,b.riusd*0.7 as riusd,a.issuemvusd,a.curcdd, a.datadate 
-from returnd_selected  a, returnd_selected b, security c 
-where a.gvkey=b.gvkey
-and a.iid=b.iid
-and b.gvkey=c.gvkey
-and b.iid=c.iid
-and a.datadate=c.dldtei
-and c.dlrsni in ('02','03')
-and b.rank=a.rank-1;
-endrsubmit;
+
 
 
 /*only 134 adjustments made*/
@@ -262,27 +254,32 @@ datadate
 from returnd
 where weekday(datadate)eq 4
 order by datadate;
+endrsubmit;
 
-
+rsubmit;
 proc sql;
 create table weeklyreturn as 
-select 
+select count(*) as nweeklyobs,
 a.gvkey,
 a.iid,
-log(a.riusd)-log(b.riusd) as returnusd,a.issuemvusd,
+log(a.riusd)-log(b.riusd) as returnusd,b.issuemvusd as lagissuemvusd,
 a.datadate,
 a.curcdd
 from totalreturnw a, totalreturnw b
 where a.datadate=b.datadate+7
 and a.gvkey=b.gvkey
-and a.iid=b.iid;
+and a.iid=b.iid
+and a.riusd is not null 
+and b.riusd is not null
+and b.issuemvusd is not null
+group by a.gvkey,a.iid;
 quit;
 endrsubmit;
 rsubmit;
 proc download data=security out=compg.security;run;
 endrsubmit;
 rsubmit;
-proc download data=sec_hidtory out=compg.sec_history;run;
+proc download data=sec_history out=compg.sec_history;run;
 endrsubmit;
 rsubmit;
 proc download data=returnd out=compg.returnd;run;
