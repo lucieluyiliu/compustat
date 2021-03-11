@@ -8,6 +8,8 @@ libname compg 'F:\compustatglobal';
 
 rsubmit;
 
+%include '/home/mcgill/yiliulu/auxiliariescompustat.sas';
+
 data namefilter;
 infile '/home/mcgill/yiliulu/namefilter.csv' delimiter = ','
           missover DSD  lrecl = 32767
@@ -50,16 +52,16 @@ endrsubmit;
 rsubmit;
 proc sql;
 create table compustat_selected as 
-select a.gvkey,a.iid,d.sic,d.fic,d.loc,a.sedol,a.isin,a.dsci,conm, a.excntry,
+select a.gvkey,a.iid,d.sic,d.fic,d.loc,a.sedol,a.isin,a.dsci,conml, a.excntry,exchg,
 case when  a.dsci contains b.keyword then 1 else 0 end as namefilter
 from (select *  
 from compd.g_security a1 union select * from compd.security a2) a, 
 namefilter b,
 exchangemap c,
-(select d1.gvkey,d1.sic,d1.loc,d1.fic,conm from compd.company d1 union select d2.gvkey,d2.sic,d2.loc,d2.fic,d2.conm from compd.g_company d2) d
+(select d1.gvkey,d1.sic,d1.loc,d1.fic,conml from compd.company d1 union select d2.gvkey,d2.sic,d2.loc,d2.fic,d2.conml from compd.g_company d2) d
 where  a.exchg=c.exchgcd 
 and c.ismajor =1
-and tpci in ('0','F')
+and tpci in ('0','F') /*common share or depository recript*/
 and a.gvkey=d.gvkey
 and (input(sic,16.) >6999 or input(sic,16.) <6000);  /*exclude financial*/
 quit;
@@ -68,27 +70,28 @@ endrsubmit;
 rsubmit;
 proc sql;
 create table tmp as select 
-gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
+gvkey,iid,sic,fic,loc,sedol,isin,dsci,conml, excntry,exchg,
 sum(namefilter) as namesum
 from compustat_selected
-group by gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry
+group by gvkey,iid,sic,fic,loc,sedol,isin,dsci,conml, excntry
 having calculated namesum =0;
 quit;
 endrsubmit;
 rsubmit;
 proc sql;
 create table compustat_selected as 
-select gvkey,iid,sic,fic,loc,sedol,isin,dsci,conm, excntry,
-case when loc=excntry then 1 else 0 end as islocal
+select gvkey,iid,sic,fic,loc,sedol,isin,dsci,conml, ctry,
+case when loc=excntry then 1 else 0 end as islocal,exchg
 
-from tmp;
+from tmp a, ctry b
+where a.excntry=b.iso3;
 proc sort data=compustat_selected nodupkeys; by gvkey iid; run;
 
 endrsubmit;
 
-proc contents data=compg.compustat_selected;run;
+
 RSUBMIT;
-proc contents data=compustat_selected;run;
+proc download data=compustat_selected out=compg.stocklistall; run;
 ENDRSUBMIT;
 
 
@@ -148,7 +151,7 @@ select a1.gvkey,
 a1.iid,
 a1.datadate,
 a1.curcdd,
-a1.prccd/a1.ajexdi*case when trfd is not null then trfd else 1 end /b1.exratd*c1.exratd/a1.qunit as riusd,
+a1.prccd/a1.qunit/a1.ajexdi*case when trfd is not null then trfd else 1 end /b1.exratd*c1.exratd/a1.qunit as riusd,
 a1.prccd*a1.cshoc/b1.exratd*c1.exratd/a1.qunit as issuemvusd
 from compd.g_secd a1, compd.exrt_dly b1, compd.exrt_dly c1
 
@@ -253,18 +256,19 @@ select riusd,issuemvusd,gvkey,iid,curcdd,
 datadate
 from returnd
 where weekday(datadate)eq 4
-order by datadate;
+order by datadate,gvkey,iid;
 endrsubmit;
 
 rsubmit;
+
+
 proc sql;
 create table weeklyreturn as 
 select count(*) as nweeklyobs,
 a.gvkey,
 a.iid,
 log(a.riusd)-log(b.riusd) as returnusd,b.issuemvusd as lagissuemvusd,
-a.datadate,
-a.curcdd
+a.datadate
 from totalreturnw a, totalreturnw b
 where a.datadate=b.datadate+7
 and a.gvkey=b.gvkey
@@ -285,7 +289,7 @@ rsubmit;
 proc download data=returnd out=compg.returnd;run;
 endrsubmit;
 rsubmit;
-proc download data=weeklyreturn out=compg.weeklyreturn;
+proc download data=weeklyreturn out=compg.weeklyreturn;run;
 endrsubmit;
 
 /*calculate 3-day return*/

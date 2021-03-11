@@ -1,4 +1,9 @@
 
+
+
+libname compg 'F:\compustatglobal';
+
+
 proc sql;
 create table compg.returnall as
 select m.datadate, 
