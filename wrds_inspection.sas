@@ -9,8 +9,8 @@ select count(*) from compg.security;
 
 proc sql;
 create table diff as 
-select * from compg.socklistall a,
+select * from compg.stocklistall a
 left join compg.compustat_selected b
-on(a.gkey=b.gvkey and a.iid=b.iid)
+on(a.gvkey=b.gvkey and a.iid=b.iid)
 where b.gvkey is null;
 

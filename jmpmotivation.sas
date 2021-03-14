@@ -124,3 +124,32 @@ fslocal.edm_Standard_entity b
 where a.factset_entity_id=b.factset_entity_id
 group by a.factset_entity_id,quarter
 order by quarter,calculated nctry;
+
+proc sql;
+ select distinct ctry from compg.instsummary 
+order by ctry;
+quit;
+proc sql;
+create table test as 
+ select distinct * from compg.instsummary
+ where ctry='Taiwan'
+order by datadate;
+quit;
+
+proc sql;
+create table test as 
+select *
+from compg.instsummary
+where ctry='Luxembourg'; 
+/*and datadate=input('01/05/2000',mmddyy10.);*/
+proc sql;
+select count(*) from (select distinct gvkey,iid from test1);
+
+
+proc sql;
+create table test as select * from compg.holdings_by_security_final a,
+compg.ctry b
+where a.sec_country=b.iso
+and ctry='Luxembourg';
+quit;
+
